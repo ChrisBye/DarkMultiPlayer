@@ -543,16 +543,16 @@ namespace DarkMultiPlayer
 
         public void SaveSettings()
         {
-            ConfigNode mainNode = File.Exists(cnSettingsFile) ? ConfigNode.Load(cnSettingsFile) : GetDefaultSettings();
-            ConfigNode settingsNode = mainNode.HasNode("SETTINGS") ? mainNode.GetNode("SETTINGS") : mainNode.AddNode("SETTINGS");
-            ConfigNode playerNode = settingsNode.HasNode("PLAYER") ? settingsNode.GetNode("PLAYER") : settingsNode.AddNode("PLAYER");
+            ConfigNode mainNode = new ConfigNode();
+            ConfigNode settingsNode = mainNode.AddNode("SETTINGS");
+            ConfigNode playerNode = settingsNode.AddNode("PLAYER");
 
             playerNode.SetValue("name", playerName, true);
             playerNode.SetValue("color", playerColor, true);
             playerNode.SetValue("flag", selectedFlag, true);
             DarkLog.Debug(playerNode.ToString());
 
-            ConfigNode bindingsNode = settingsNode.HasNode("KEYBINDINGS") ? settingsNode.GetNode("KEYBINDINGS") : settingsNode.AddNode("KEYBINDINGS");
+            ConfigNode bindingsNode = settingsNode.AddNode("KEYBINDINGS");
             bindingsNode.SetValue("chat", (int)chatKey, true);
             bindingsNode.SetValue("screenshot", (int)screenshotKey, true);
 
@@ -562,7 +562,7 @@ namespace DarkMultiPlayer
             settingsNode.SetValue("revert", revertEnabled, true);
             settingsNode.SetValue("toolbar", (int)toolbarType, true);
 
-            ConfigNode serversNode = settingsNode.HasNode("SERVERS") ? settingsNode.GetNode("SERVERS") : settingsNode.AddNode("SERVERS");
+            ConfigNode serversNode = settingsNode.AddNode("SERVERS");
             serversNode.ClearNodes();
             foreach (ServerEntry server in servers)
             {

@@ -26,12 +26,15 @@ namespace DarkMultiPlayer
         public DMPToolbarType toolbarType;
         private const string DEFAULT_PLAYER_NAME = "Player";
         private const string SETTINGS_FILE = "servers.xml";
+        private const string CN_SETTINGS_FILE = "settings.cfg";
         private const string PUBLIC_KEY_FILE = "publickey.txt";
         private const string PRIVATE_KEY_FILE = "privatekey.txt";
         private const int DEFAULT_CACHE_SIZE = 100;
         private string dataLocation;
         private string settingsFile;
+        private string cnSettingsFile;
         private string backupSettingsFile;
+        private string backupCnSettingsFile;
         private string publicKeyFile;
         private string privateKeyFile;
         private string backupPublicKeyFile;
@@ -59,7 +62,9 @@ namespace DarkMultiPlayer
             }
             dataLocation = Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), "Data");
             settingsFile = Path.Combine(dataLocation, SETTINGS_FILE);
+            cnSettingsFile = Path.Combine(dataLocation, CN_SETTINGS_FILE);
             backupSettingsFile = Path.Combine(darkMultiPlayerSavesDirectory, SETTINGS_FILE);
+            backupCnSettingsFile = Path.Combine(darkMultiPlayerSavesDirectory, CN_SETTINGS_FILE);
             publicKeyFile = Path.Combine(dataLocation, PUBLIC_KEY_FILE);
             backupPublicKeyFile = Path.Combine(darkMultiPlayerSavesDirectory, PUBLIC_KEY_FILE);
             privateKeyFile = Path.Combine(dataLocation, PRIVATE_KEY_FILE);
@@ -67,7 +72,7 @@ namespace DarkMultiPlayer
             LoadSettings();
         }
 
-        public void LoadSettings()
+        public void LoadSSettings()
         {
 
             //Read XML settings
@@ -293,7 +298,7 @@ namespace DarkMultiPlayer
             File.WriteAllText(privateKeyFile, playerPrivateKey);
         }
 
-        public void SaveSettings()
+        public void SaveSSettings()
         {
             XmlDocument xmlDoc = new XmlDocument();
             if (File.Exists(settingsFile))
@@ -407,6 +412,189 @@ namespace DarkMultiPlayer
             }
             xmlDoc.Save(settingsFile);
             File.Copy(settingsFile, backupSettingsFile, true);
+        }
+
+        public void LoadSettings()
+        {
+            bool saveAfterLoad = false;
+            ConfigNode mainNode = new ConfigNode();
+
+            if (File.Exists(backupCnSettingsFile) && !File.Exists(cnSettingsFile))
+            {
+                DarkLog.Debug("restoring settings");
+                File.Copy(backupCnSettingsFile, cnSettingsFile);
+            }
+
+            if (!File.Exists(cnSettingsFile))
+            {
+                mainNode = GetDefaultSettings();
+                playerName = DEFAULT_PLAYER_NAME;
+                mainNode.Save(cnSettingsFile);
+            }
+
+            if (!File.Exists(backupCnSettingsFile))
+            {
+                DarkLog.Debug("Backing up settings");
+                File.Copy(cnSettingsFile, backupCnSettingsFile);
+            }
+
+            mainNode = ConfigNode.Load(cnSettingsFile);
+
+            ConfigNode settingsNode = mainNode.GetNode("SETTINGS");
+            ConfigNode playerNode = settingsNode.GetNode("PLAYER");
+            ConfigNode bindingsNode = settingsNode.GetNode("KEYBINDINGS");
+
+            playerName = playerNode.GetValue("name");
+
+            if (!int.TryParse(settingsNode.GetValue("cacheSize"), out cacheSize))
+            {
+                DarkLog.Debug("Adding cache size to settings");
+                cacheSize = DEFAULT_CACHE_SIZE;
+                saveAfterLoad = true;
+            }
+
+            if (!int.TryParse(settingsNode.GetValue("disclaimer"), out disclaimerAccepted))
+            {
+                DarkLog.Debug("Adding disclaimer to settings");
+                disclaimerAccepted = 0;
+                saveAfterLoad = true;
+            }
+
+            if (!playerNode.TryGetValue("color", ref playerColor))
+            {
+                DarkLog.Debug("Adding color to settings");
+                playerColor = PlayerColorWorker.GenerateRandomColor();
+                OptionsWindow.fetch.loadEventHandled = false;
+                saveAfterLoad = true;
+            }
+
+            int chatKey = (int)KeyCode.BackQuote, screenshotKey = (int)KeyCode.F8;
+            if (!int.TryParse(bindingsNode.GetValue("chat"), out chatKey))
+            {
+                DarkLog.Debug("Adding chat key to settings");
+                this.chatKey = KeyCode.BackQuote;
+                saveAfterLoad = true;
+            }
+            else
+            {
+                this.chatKey = (KeyCode)chatKey;
+            }
+
+            if (!int.TryParse(bindingsNode.GetValue("screenshot"), out screenshotKey))
+            {
+                DarkLog.Debug("Adding screenshot key to settings");
+                this.screenshotKey = KeyCode.F8;
+                saveAfterLoad = true;
+            }
+            else
+            {
+                this.screenshotKey = (KeyCode)screenshotKey;
+            }
+
+            if (!playerNode.TryGetValue("flag", ref selectedFlag))
+            {
+                DarkLog.Debug("Adding selected flag to settings file");
+                selectedFlag = "Squad/Flags/default";
+                saveAfterLoad = true;
+            }
+
+            if (!settingsNode.TryGetValue("compression", ref compressionEnabled))
+            {
+                DarkLog.Debug("Adding compression flag to settings file");
+                compressionEnabled = true;
+                saveAfterLoad = true;
+            }
+
+            if (!settingsNode.TryGetValue("revert", ref revertEnabled))
+            {
+                DarkLog.Debug("Adding revert flag to settings file");
+                revertEnabled = true;
+                saveAfterLoad = true;
+            }
+
+            int toolbarType;
+            if (!int.TryParse(settingsNode.GetValue("toolbar"), out toolbarType))
+            {
+                DarkLog.Debug("Adding toolbar flag to settings file");
+                this.toolbarType = DMPToolbarType.BLIZZY_IF_INSTALLED;
+                saveAfterLoad = true;
+            }
+            else
+            {
+                this.toolbarType = (DMPToolbarType)toolbarType;
+            }
+
+            ConfigNode serversNode = settingsNode.GetNode("SERVERS");
+            servers = new List<ServerEntry>();
+            if (serversNode.HasNode("SERVER"))
+            {
+                foreach (ConfigNode serverNode in serversNode.GetNodes("SERVER"))
+                {
+                    ServerEntry newServer = new ServerEntry();
+                    newServer.name = serverNode.GetValue("name");
+                    newServer.address = serverNode.GetValue("address");
+                    serverNode.TryGetValue("port", ref newServer.port);
+                    servers.Add(newServer);
+                }
+            }
+
+            if (saveAfterLoad) SaveSettings();
+        }
+
+        public void SaveSettings()
+        {
+            ConfigNode mainNode = File.Exists(cnSettingsFile) ? ConfigNode.Load(cnSettingsFile) : GetDefaultSettings();
+            ConfigNode settingsNode = mainNode.HasNode("SETTINGS") ? mainNode.GetNode("SETTINGS") : mainNode.AddNode("SETTINGS");
+            ConfigNode playerNode = settingsNode.HasNode("PLAYER") ? settingsNode.GetNode("PLAYER") : settingsNode.AddNode("PLAYER");
+
+            playerNode.SetValue("name", playerName, true);
+            playerNode.SetValue("color", playerColor, true);
+            playerNode.SetValue("flag", selectedFlag, true);
+            DarkLog.Debug(playerNode.ToString());
+
+            ConfigNode bindingsNode = settingsNode.HasNode("KEYBINDINGS") ? settingsNode.GetNode("KEYBINDINGS") : settingsNode.AddNode("KEYBINDINGS");
+            bindingsNode.SetValue("chat", (int)chatKey, true);
+            bindingsNode.SetValue("screenshot", (int)screenshotKey, true);
+
+            settingsNode.SetValue("cacheSize", cacheSize, true);
+            settingsNode.SetValue("disclaimer", disclaimerAccepted, true);
+            settingsNode.SetValue("compression", compressionEnabled, true);
+            settingsNode.SetValue("revert", revertEnabled, true);
+            settingsNode.SetValue("toolbar", (int)toolbarType, true);
+
+            ConfigNode serversNode = settingsNode.HasNode("SERVERS") ? settingsNode.GetNode("SERVERS") : settingsNode.AddNode("SERVERS");
+            serversNode.ClearNodes();
+            foreach (ServerEntry server in servers)
+            {
+                ConfigNode serverNode = serversNode.AddNode("SERVER");
+                serverNode.AddValue("name", server.name);
+                serverNode.AddValue("address", server.address);
+                serverNode.AddValue("port", server.port);
+            }
+            mainNode.Save(cnSettingsFile);
+
+            File.Copy(cnSettingsFile, backupCnSettingsFile, true);
+        }
+
+        public ConfigNode GetDefaultSettings()
+        {
+            ConfigNode mainNode = new ConfigNode();
+            ConfigNode settingsNode = new ConfigNode("SETTINGS");
+            settingsNode.AddValue("cacheSize", DEFAULT_CACHE_SIZE);
+
+            ConfigNode playerNode = new ConfigNode("PLAYER");
+            playerNode.AddValue("name", DEFAULT_PLAYER_NAME);
+
+            ConfigNode bindingsNode = new ConfigNode("KEYBINDINGS");
+
+            ConfigNode serversNode = new ConfigNode("SERVERS");
+
+            settingsNode.AddNode(playerNode);
+            settingsNode.AddNode(bindingsNode);
+            settingsNode.AddNode(serversNode);
+
+            mainNode.AddNode(settingsNode);
+            return mainNode;
         }
 
         private string newXMLString()
